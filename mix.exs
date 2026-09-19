@@ -12,12 +12,11 @@ defmodule PgDurable.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       elixirc_paths: elixirc_paths(Mix.env()),
-      test_coverage: [tool: ExCoveralls],
-      preferred_cli_env: [coveralls: :test, "coveralls.html": :test],
       name: "PgDurable",
       description: "Thin typed facade, compiler, and execution client for pg_durable.",
       source_url: @source_url,
-      docs: [main: "PgDurable", source_ref: "v#{@version}", extras: ["README.md"]]
+      docs: [main: "PgDurable", source_ref: "v#{@version}", extras: ["README.md"]],
+      aliases: ["test.integration": "test --include pg_durable_integration"]
     ]
   end
 
@@ -30,9 +29,11 @@ defmodule PgDurable.MixProject do
 
   defp deps do
     [
+      {:jason, "~> 1.0"},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:postgrex, "~> 0.19", only: :test}
     ]
   end
 end
