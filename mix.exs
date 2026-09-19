@@ -14,7 +14,7 @@ defmodule PgDurable.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       name: "PgDurable",
       description: "Thin typed facade, compiler, and execution client for pg_durable.",
-      license: nil,
+      license: "MIT",
       source_url: @source_url,
       docs: [main: "PgDurable", source_ref: "v#{@version}", extras: ["README.md"]],
       aliases: ["test.integration": "test --include pg_durable_integration"]

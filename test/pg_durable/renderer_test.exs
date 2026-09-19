@@ -8,27 +8,27 @@ defmodule PgDurable.RendererTest do
   describe "to_expr/1" do
     test "simple SQL node" do
       node = Builder.sql("SELECT 1")
-      assert {:ok, "'SELECT 1'"} = Renderer.to_expr(node)
+      assert {:ok, "E'SELECT 1'"} = Renderer.to_expr(node)
     end
 
     test "SQL node with single quotes" do
       node = Builder.sql("SELECT 'hello'")
-      assert {:ok, "'SELECT ''hello'''"} = Renderer.to_expr(node)
+      assert {:ok, "E'SELECT ''hello'''"} = Renderer.to_expr(node)
     end
 
     test "sequence of two SQL nodes" do
       node = Builder.then(Builder.sql("SELECT 1"), Builder.sql("SELECT 2"))
       assert {:ok, expr} = Renderer.to_expr(node)
       assert expr =~ "~>"
-      assert expr =~ "'SELECT 1'"
-      assert expr =~ "'SELECT 2'"
+      assert expr =~ "E'SELECT 1'"
+      assert expr =~ "E'SELECT 2'"
     end
 
     test "named result" do
       node = Builder.named(Builder.sql("SELECT 1"), "my_result")
       assert {:ok, expr} = Renderer.to_expr(node)
       assert expr =~ "|=>"
-      assert expr =~ "'my_result'"
+      assert expr =~ "E'my_result'"
     end
 
     test "join" do
@@ -46,7 +46,7 @@ defmodule PgDurable.RendererTest do
         )
 
       assert {:ok, expr} = Renderer.to_expr(node)
-      assert expr == "df.if('SELECT true', 'SELECT ''yes''', 'SELECT ''no''')"
+      assert expr == "df.if(E'SELECT true', E'SELECT ''yes''', E'SELECT ''no''')"
     end
 
     test "sleep" do
@@ -57,13 +57,13 @@ defmodule PgDurable.RendererTest do
     test "wait_for_signal without timeout" do
       node = Builder.wait_for_signal("my_signal")
       assert {:ok, expr} = Renderer.to_expr(node)
-      assert expr =~ "df.wait_for_signal('my_signal')"
+      assert expr =~ "df.wait_for_signal(E'my_signal')"
     end
 
     test "wait_for_signal with timeout" do
       node = Builder.wait_for_signal("my_signal", timeout: 30)
       assert {:ok, expr} = Renderer.to_expr(node)
-      assert expr =~ "df.wait_for_signal('my_signal', 30)"
+      assert expr =~ "df.wait_for_signal(E'my_signal', 30)"
     end
 
     test "raw expression passes through" do
@@ -104,7 +104,7 @@ defmodule PgDurable.RendererTest do
 
     test "workflow root node" do
       w = Builder.new(name: "test", root: Builder.sql("SELECT 1"))
-      assert {:ok, "'SELECT 1'"} = Renderer.to_expr(w)
+      assert {:ok, "E'SELECT 1'"} = Renderer.to_expr(w)
     end
 
     test "workflow without root returns error" do
@@ -117,13 +117,13 @@ defmodule PgDurable.RendererTest do
     test "wraps expression in SELECT df.start" do
       node = Builder.sql("SELECT 1")
       assert {:ok, sql} = Renderer.to_start_sql(node)
-      assert sql =~ "SELECT df.start('SELECT 1')"
+      assert sql =~ "SELECT df.start(E'SELECT 1')"
     end
 
     test "with label" do
       node = Builder.sql("SELECT 1")
       assert {:ok, sql} = Renderer.to_start_sql(node, label: "my-label")
-      assert sql =~ "SELECT df.start('SELECT 1', 'my-label')"
+      assert sql =~ "SELECT df.start(E'SELECT 1', E'my-label')"
     end
 
     test "complex workflow" do

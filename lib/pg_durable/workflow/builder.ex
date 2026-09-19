@@ -25,6 +25,37 @@ defmodule PgDurable.Workflow.Builder do
   end
 
   @doc """
+  Create a new workflow, returning `{:ok, workflow}` or `{:error, [Diagnostic]}`.
+
+  Returns a diagnostic when `:name` is missing or not a binary string.
+  """
+  @spec new!(keyword()) :: {:ok, Workflow.t()} | {:error, [PgDurable.Diagnostic.t()]}
+  def new!(opts) do
+    case Keyword.get(opts, :name) do
+      nil ->
+        {:error, [PgDurable.Diagnostic.new(:missing_name, "Workflow name is required")]}
+
+      name when not is_binary(name) ->
+        {:error,
+         [
+           PgDurable.Diagnostic.new(
+             :invalid_name,
+             "Workflow name must be a string, got: #{inspect(name)}"
+           )
+         ]}
+
+      name ->
+        {:ok,
+         %Workflow{
+           name: name,
+           label: Keyword.get(opts, :label),
+           root: Keyword.get(opts, :root),
+           metadata: Keyword.get(opts, :metadata, %{})
+         }}
+    end
+  end
+
+  @doc """
   Create a raw SQL node.
   """
   @spec sql(String.t(), keyword()) :: Sql.t()

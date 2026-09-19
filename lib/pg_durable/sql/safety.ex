@@ -8,17 +8,18 @@ defmodule PgDurable.SQL.Safety do
 
   ## String-literal strategy
 
-  We rely on PostgreSQL's `standard_conforming_strings=on` (the default since
-  PG 9.1). Under this setting backslash sequences (`\\n`, `\\t`, etc.) are
-  treated as *literal data*, not escape codes. Therefore:
+  We use PostgreSQL's **escape string syntax** (`E'...'`) for all quoted strings.
+  This makes quoting **deterministic regardless of the `standard_conforming_strings`**
+  GUC setting:
 
-  - The only character that needs escaping inside a single-quoted string literal
-    is the single quote itself, doubled to `''`.
-  - Backslashes are passed through unchanged — no double-escaping required.
-  - Dollar signs (`$1`, `$name`) are harmless inside single-quoted literals and
-    are never interpreted as parameter markers or reference tokens by PG.
+  - In `E'...'` mode, backslashes are always treated as escape sequences.
+  - Single quotes are doubled to `''` (same as plain strings).
+  - A literal backslash in input must be escaped as `\\\\` (two backslashes in
+    the SQL literal represent one backslash in the parsed string value).
+  - This is safe under both `standard_conforming_strings=on` and `=off`.
 
-  This is simpler, faster, and correct under the default PG configuration.
+  Dollar signs (`$1`, `$name`) are harmless inside single-quoted literals and
+  are never interpreted as parameter markers or reference tokens by PG.
 
   See `docs/security/sql_safety.md` for the trust model.
   """
@@ -26,13 +27,14 @@ defmodule PgDurable.SQL.Safety do
   alias PgDurable.Diagnostic
 
   @doc """
-  Wraps a string in PostgreSQL single quotes, escaping internal single quotes.
-  Rejects null bytes and non-binary input.
+  Wraps a string in PostgreSQL escape-string syntax (`E'...'`), escaping internal
+  single quotes and backslashes. Rejects null bytes and non-binary input.
 
-  Under `standard_conforming_strings=on` (PG default since 9.1), backslashes
-  are literal data and need no escaping. Only single quotes are doubled (`''`).
+  Behavior is deterministic regardless of `standard_conforming_strings`:
+  - Single quotes are doubled (`''`).
+  - Backslashes are doubled (`\\\\` → literal backslash).
 
-  Returns `{:ok, "'escaped_string'"}` or `{:error, Diagnostic.t()}`.
+  Returns `{:ok, "E'escaped_string'"}` or `{:error, Diagnostic.t()}`.
   """
   @spec quote_sql_string(String.t()) :: {:ok, String.t()} | {:error, Diagnostic.t()}
   def quote_sql_string(value) when not is_binary(value) do
@@ -43,8 +45,12 @@ defmodule PgDurable.SQL.Safety do
     if String.contains?(value, "\0") do
       {:error, Diagnostic.new(:null_byte, "String must not contain null bytes")}
     else
-      escaped = String.replace(value, "'", "''")
-      {:ok, "'#{escaped}'"}
+      escaped =
+        value
+        |> String.replace("\\", "\\\\")
+        |> String.replace("'", "''")
+
+      {:ok, "E'#{escaped}'"}
     end
   end
 

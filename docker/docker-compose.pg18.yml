@@ -2,11 +2,10 @@ services:
   pg_durable_pg18:
     image: ghcr.io/microsoft/pg_durable:v0.2.7-pg18
     platform: linux/amd64
-    container_name: pg_durable_test_pg18
     environment:
       POSTGRES_PASSWORD: pg_durable_test
     ports:
-      - "55418:5432"
+      - "${PG_DURABLE_PG18_PORT:-55418}:5432"
     command: >
       postgres
         -c shared_preload_libraries='pg_durable'

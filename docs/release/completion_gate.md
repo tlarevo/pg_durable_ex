@@ -9,18 +9,18 @@ Every PR must demonstrate:
 - [ ] `mix format --check-formatted` passes
 - [ ] `mix compile --warnings-as-errors` passes
 - [ ] `mix test` passes (unit)
-- [ ] Integration tests pass (if touching pg_durable-dependent code)
+- [ ] Integration tests pass (PG17 + PG18)
 - [ ] No regressions in conformance test count
 
 ## CI Evidence
 
-CI must show:
+CI runs **three lanes on every PR and every push to main**:
 
-- [ ] Unit test lane green (format + compile + test)
-- [ ] Integration PG17 lane green (real pg_durable extension, `PG_DURABLE_INTEGRATION=1`)
-- [ ] Integration PG18 lane green (real pg_durable extension, `PG_DURABLE_INTEGRATION=1`)
+- [ ] Unit test lane (format + compile + test)
+- [ ] Integration PG17 lane (real pg_durable extension, `PG_DURABLE_INTEGRATION=1`)
+- [ ] Integration PG18 lane (real pg_durable extension, `PG_DURABLE_INTEGRATION=1`)
 
-Integration lanes run against live PostgreSQL containers with the pg_durable extension loaded. A green CI means the extension, its SQL safety layer, and the Elixir wrapper all agree.
+All three lanes are required for merge. Integration lanes run against live PostgreSQL containers with the pg_durable extension loaded. A green CI means the extension, its SQL safety layer, and the Elixir wrapper all agree.
 
 ## Review Evidence
 

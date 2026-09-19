@@ -1,14 +1,45 @@
 defmodule PgDurable.FacadeTest do
   use ExUnit.Case, async: true
 
+  alias PgDurable.Diagnostic
   alias PgDurable.Workflow
   alias PgDurable.Node.{Sql, Sequence, NamedResult, Join, If, Sleep, WaitForSignal, RawExpr}
   alias PgDurable.Ref.{Result, Column, RowSet}
+
+  # ── new!/1 (diagnostic-first) ────────────────────────────────────
+
+  describe "new!/1" do
+    test "returns {:ok, workflow} for valid opts" do
+      assert {:ok, %Workflow{name: "test"}} = PgDurable.new!(name: "test")
+    end
+
+    test "returns {:error, [Diagnostic]} when name is missing" do
+      assert {:error, [%Diagnostic{code: :missing_name}]} = PgDurable.new!([])
+    end
+
+    test "returns {:error, [Diagnostic]} when name is not a string" do
+      assert {:error, [%Diagnostic{code: :invalid_name}]} = PgDurable.new!(name: 123)
+    end
+
+    test "creates workflow with label and root" do
+      root = PgDurable.sql("SELECT 1")
+
+      assert {:ok, w} = PgDurable.new!(name: "test", label: "my-label", root: root)
+      assert w.label == "my-label"
+      assert %Sql{} = w.root
+    end
+  end
+
+  # ── new/1 (raises) ──────────────────────────────────────────────
 
   describe "new/1" do
     test "creates workflow" do
       w = PgDurable.new(name: "test")
       assert %Workflow{name: "test"} = w
+    end
+
+    test "raises KeyError when name is missing" do
+      assert_raise KeyError, fn -> PgDurable.new([]) end
     end
 
     test "creates workflow with label and root" do
@@ -92,37 +123,82 @@ defmodule PgDurable.FacadeTest do
     end
   end
 
+  # ── ref/1, ref/2, rowset/1 (diagnostic-first) ───────────────────
+
   describe "ref/1" do
-    test "creates Result reference" do
-      ref = PgDurable.ref("users")
-      assert %Result{name: "users"} = ref
+    test "returns {:ok, Result} for valid name" do
+      assert {:ok, %Result{name: "users"}} = PgDurable.ref("users")
+    end
+
+    test "returns {:error, Diagnostic} for invalid name" do
+      assert {:error, %Diagnostic{code: :invalid_name}} = PgDurable.ref("")
     end
   end
 
   describe "ref/2" do
-    test "creates Column reference" do
-      ref = PgDurable.ref("users", "email")
-      assert %Column{result: "users", column: "email"} = ref
+    test "returns {:ok, Column} for valid names" do
+      assert {:ok, %Column{result: "users", column: "email"}} = PgDurable.ref("users", "email")
+    end
+
+    test "returns {:error, Diagnostic} for invalid name" do
+      assert {:error, %Diagnostic{code: :invalid_name}} = PgDurable.ref("", "email")
     end
   end
 
   describe "rowset/1" do
-    test "creates RowSet reference" do
-      ref = PgDurable.rowset("orders")
-      assert %RowSet{name: "orders"} = ref
+    test "returns {:ok, RowSet} for valid name" do
+      assert {:ok, %RowSet{name: "orders"}} = PgDurable.rowset("orders")
+    end
+
+    test "returns {:error, Diagnostic} for invalid name" do
+      assert {:error, %Diagnostic{code: :invalid_name}} = PgDurable.rowset("")
     end
   end
+
+  # ── ref!/1, ref!/2, rowset!/1 (raising) ─────────────────────────
+
+  describe "ref!/1" do
+    test "returns Result for valid name" do
+      assert %Result{name: "users"} = PgDurable.ref!("users")
+    end
+
+    test "raises ArgumentError for invalid name" do
+      assert_raise ArgumentError, fn -> PgDurable.ref!("") end
+    end
+  end
+
+  describe "ref!/2" do
+    test "returns Column for valid names" do
+      assert %Column{result: "users", column: "email"} = PgDurable.ref!("users", "email")
+    end
+
+    test "raises ArgumentError for invalid name" do
+      assert_raise ArgumentError, fn -> PgDurable.ref!("", "email") end
+    end
+  end
+
+  describe "rowset!/1" do
+    test "returns RowSet for valid name" do
+      assert %RowSet{name: "orders"} = PgDurable.rowset!("orders")
+    end
+
+    test "raises ArgumentError for invalid name" do
+      assert_raise ArgumentError, fn -> PgDurable.rowset!("") end
+    end
+  end
+
+  # ── to_expr/1 ───────────────────────────────────────────────────
 
   describe "to_expr/1" do
     test "renders a simple SQL node" do
       node = PgDurable.sql("SELECT 1")
-      assert {:ok, "'SELECT 1'"} = PgDurable.to_expr(node)
+      assert {:ok, "E'SELECT 1'"} = PgDurable.to_expr(node)
     end
 
     test "renders a workflow with root" do
       root = PgDurable.sql("SELECT 1")
       w = PgDurable.new(name: "test", root: root)
-      assert {:ok, "'SELECT 1'"} = PgDurable.to_expr(w)
+      assert {:ok, "E'SELECT 1'"} = PgDurable.to_expr(w)
     end
 
     test "renders a complex workflow" do
@@ -139,6 +215,8 @@ defmodule PgDurable.FacadeTest do
     end
   end
 
+  # ── to_sql/1 ────────────────────────────────────────────────────
+
   describe "to_sql/1" do
     test "renders SELECT df.start(...) SQL" do
       node = PgDurable.sql("SELECT 1")
@@ -154,6 +232,19 @@ defmodule PgDurable.FacadeTest do
       assert sql =~ "SELECT df.start("
     end
   end
+
+  # ── to_start_sql/2 ──────────────────────────────────────────────
+
+  describe "to_start_sql/2" do
+    test "returns diagnostic for invalid label" do
+      node = PgDurable.sql("SELECT 1")
+
+      assert {:error, [%Diagnostic{code: :null_byte}]} =
+               PgDurable.to_start_sql(node, label: "bad\0label")
+    end
+  end
+
+  # ── validate/1 ──────────────────────────────────────────────────
 
   describe "validate/1" do
     test "returns :ok for valid workflow" do
@@ -173,6 +264,7 @@ defmodule PgDurable.FacadeTest do
   describe "module does not leak internal structs" do
     test "Builder is not directly referenced" do
       assert function_exported?(PgDurable, :new, 1)
+      assert function_exported?(PgDurable, :new!, 1)
     end
   end
 end

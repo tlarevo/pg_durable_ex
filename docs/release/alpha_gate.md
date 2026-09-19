@@ -32,14 +32,14 @@ Before declaring alpha, ALL of the following must be true:
 
 ### Release Artifacts
 
-- [ ] `mix.exs` has correct version, description, licenses
+- [ ] `mix.exs` has correct version, description, and license: "MIT"
 - [ ] `.formatter.exs` covers all source files
 - [ ] `.gitignore` excludes build artifacts
-- [ ] LICENSE file exists (or explicit TODO)
+- [ ] LICENSE file exists with MIT license
 
 ## Known Limitations (Alpha)
 
-- pg_durable is upstream Preview — not production-ready
+- pg_durable v0.2.7 is a stable release, but pg_durable_ex is not production-ready
 - No Hex package published yet (install via git)
 - No Ecto/Oban/Ash adapters (separate projects)
 - `race`, `loop`, `break`, HTTP constructs are deferred

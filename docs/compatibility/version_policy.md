@@ -63,4 +63,4 @@ Integration tests require Docker or Podman. Never use your system PostgreSQL.
 
 ## Production readiness
 
-**pg_durable is currently labeled Preview upstream.** pg_durable_ex does not claim production or stable readiness until both conformance and command-centre viability gates pass.
+**pg_durable v0.2.7 is a stable upstream release.** pg_durable_ex does not claim production or stable readiness until conformance evidence (unit + integration tests against PG17/18), safety evidence (SQL safety test suite), and API maturity gates pass.

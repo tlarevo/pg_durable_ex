@@ -36,6 +36,28 @@ defmodule PgDurable.SQL.RoundTripTest do
     retrieved
   end
 
+  # Helper: same as round_trip but sets standard_conforming_strings=off first.
+  defp round_trip_scs_off(conn, value) do
+    {:ok, quoted} = PgDurable.SQL.Safety.quote_sql_string(value)
+
+    Postgrex.query!(conn, "SET LOCAL standard_conforming_strings = off", [])
+    |> case do
+      {:error, _} ->
+        # SET LOCAL fails outside a transaction; use session-level SET
+        Postgrex.query!(conn, "SET standard_conforming_strings = off", [])
+
+      _other ->
+        :ok
+    end
+
+    %{rows: [[retrieved]]} =
+      Postgrex.query!(conn, "SELECT #{quoted}::text", [])
+
+    # Reset to default for subsequent tests
+    Postgrex.query!(conn, "SET standard_conforming_strings = on", [])
+    retrieved
+  end
+
   # ---------------------------------------------------------------------------
   # Single quotes
   # ---------------------------------------------------------------------------
@@ -151,6 +173,32 @@ defmodule PgDurable.SQL.RoundTripTest do
     test "1500 char string", %{conn: conn} do
       long = String.duplicate("a", 1500)
       assert round_trip(conn, long) == long
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # standard_conforming_strings=off (determinism proof)
+  # ---------------------------------------------------------------------------
+
+  describe "round-trip with standard_conforming_strings=off" do
+    test "backslashes round-trip identically with scs=off", %{conn: conn} do
+      assert round_trip_scs_off(conn, "path\\to\\file") == "path\\to\\file"
+    end
+
+    test "double backslash round-trips with scs=off", %{conn: conn} do
+      assert round_trip_scs_off(conn, "\\\\") == "\\\\"
+    end
+
+    test "escape sequences literal with scs=off", %{conn: conn} do
+      assert round_trip_scs_off(conn, "\\n\\t\\r") == "\\n\\t\\r"
+    end
+
+    test "single quotes round-trip with scs=off", %{conn: conn} do
+      assert round_trip_scs_off(conn, "it's") == "it's"
+    end
+
+    test "mixed quotes and backslashes with scs=off", %{conn: conn} do
+      assert round_trip_scs_off(conn, "path\\to\\it's") == "path\\to\\it's"
     end
   end
 end

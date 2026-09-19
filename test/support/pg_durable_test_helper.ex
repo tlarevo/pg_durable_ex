@@ -6,9 +6,9 @@ defmodule PgDurable.TestSupport do
   container instances on non-default ports.
   """
 
-  @pg17_port 55_417
-  @pg18_port 55_418
-  @default_port @pg17_port
+  @pg17_port_default 55_417
+  @pg18_port_default 55_418
+  @default_port @pg17_port_default
   # pg_durable always installs into the 'postgres' database
   @db_name "postgres"
   @db_user "postgres"
@@ -33,9 +33,16 @@ defmodule PgDurable.TestSupport do
     version = version || pg_version()
 
     case version do
-      17 -> @pg17_port
-      18 -> @pg18_port
-      _ -> @default_port
+      17 ->
+        System.get_env("PG_DURABLE_PG17_PORT", Integer.to_string(@pg17_port_default))
+        |> String.to_integer()
+
+      18 ->
+        System.get_env("PG_DURABLE_PG18_PORT", Integer.to_string(@pg18_port_default))
+        |> String.to_integer()
+
+      _ ->
+        @default_port
     end
   end
 
@@ -146,13 +153,30 @@ defmodule PgDurable.TestSupport do
   to the expected database and the pg_durable worker is accepting queries.
   """
   def harness_identity!(conn) do
-    marker = "pg_durable_ex_harness_v#{@expected_pg_durable_version}"
+    pg_ver = pg_version()
+    pgd_ver = @expected_pg_durable_version
+    marker = "pg_durable_ex_harness_v#{pgd_ver}_pg#{pg_ver}"
+
+    Postgrex.query!(conn, """
+    CREATE TABLE IF NOT EXISTS _pg_durable_ex_harness (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+    """)
+
+    Postgrex.query!(conn, """
+    INSERT INTO _pg_durable_ex_harness (key, value)
+    VALUES ('identity', '#{marker}')
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+    """)
 
     %{rows: [[result]]} =
-      Postgrex.query!(conn, "SELECT '#{marker}'", [])
+      Postgrex.query!(conn, """
+      SELECT value FROM _pg_durable_ex_harness WHERE key = 'identity';
+      """)
 
     unless result == marker do
-      raise "Harness identity marker mismatch: expected '#{marker}', got '#{result}'."
+      raise "Harness identity mismatch: expected '#{marker}', got '#{result}'."
     end
 
     IO.puts("  Harness identity verified: #{result}")

@@ -2,7 +2,7 @@
 
 Thin Elixir facade, compiler, and execution client for [Microsoft pg_durable](https://github.com/microsoft/pg_durable).
 
-> **Status: Experimental** — Upstream pg_durable is currently labeled Preview. pg_durable_ex remains experimental until conformance and viability gates pass.
+> **Status: Experimental** — Upstream pg_durable v0.2.7 is a stable release. pg_durable_ex is experimental until conformance and safety gates pass.
 
 ## What is pg_durable_ex?
 
@@ -186,4 +186,4 @@ See [docs/debugging/sql_inspection.md](docs/debugging/sql_inspection.md) for the
 
 ## License
 
-TODO: to be determined
+MIT — see [LICENSE](LICENSE).

@@ -108,16 +108,18 @@ defmodule PgDurable.Renderer do
   @spec to_start_sql(Workflow.t() | PgDurable.Node.t(), keyword()) ::
           {:ok, String.t()} | {:error, [Diagnostic.t()]}
   def to_start_sql(input, opts \\ []) do
-    with {:ok, expr} <- to_expr(input) do
-      label = Keyword.get(opts, :label)
-
-      start_call =
-        case label do
-          nil -> "df.start(#{expr})"
-          l -> "df.start(#{expr}, #{Safety.quote_sql_string(l) |> elem(1)})"
-        end
-
+    with {:ok, expr} <- to_expr(input),
+         {:ok, start_call} <- build_start_call(expr, Keyword.get(opts, :label)) do
       {:ok, "SELECT #{start_call}"}
+    end
+  end
+
+  defp build_start_call(expr, nil), do: {:ok, "df.start(#{expr})"}
+
+  defp build_start_call(expr, label) do
+    case Safety.quote_sql_string(label) do
+      {:ok, quoted} -> {:ok, "df.start(#{expr}, #{quoted})"}
+      {:error, diag} -> {:error, [diag]}
     end
   end
 

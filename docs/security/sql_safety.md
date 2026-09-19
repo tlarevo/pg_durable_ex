@@ -39,10 +39,20 @@ Result references (`$name`, `$name.column`, `$name.*`) are not user strings. The
 
 User strings pass through `quote_sql_string/1` which wraps them in single quotes. References never touch the quoting layer — they are a distinct, safer path.
 
+## String-Literal Quoting Strategy
+
+All string literals use PostgreSQL **escape string syntax** (`E'...'`). This makes quoting deterministic regardless of the `standard_conforming_strings` GUC setting:
+
+- Single quotes are doubled (`''`).
+- Backslashes are doubled (`\\` → literal backslash).
+- This is safe under both `standard_conforming_strings=on` (PG ≥ 9.1 default) and `=off`.
+
+The `E'...'` prefix tells PostgreSQL to always interpret backslash escapes, so the quoted form produces the same parsed value regardless of session-level GUC.
+
 ## Library Guarantees
 
 1. **Null bytes are rejected** at every quoting entry point.
-2. **SQL injection via string values is prevented** by proper escaping of single quotes and backslashes.
+2. **SQL injection via string values is prevented** by escaping single quotes (`''`) and backslashes (`\\`) within `E'...'` literals.
 3. **Identifier injection is prevented** by double-quote escaping.
 4. **Type mismatches are rejected** — `quote_literal/1` returns an error for unrecognized types instead of producing dangerous output.
 5. **All SQL produced by the library is inspectable** — functions return `{:ok, sql}` tuples, never silently inject SQL into connections.

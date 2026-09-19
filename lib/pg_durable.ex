@@ -38,8 +38,10 @@ defmodule PgDurable do
   interpolate user data — use the typed node constructors instead.
   """
 
+  @vsn Mix.Project.config()[:version]
+
   @spec version() :: String.t()
-  def version, do: Mix.Project.config()[:version]
+  def version, do: @vsn
 
   # ── Workflow creation ──
 
@@ -54,6 +56,13 @@ defmodule PgDurable do
     * `:metadata` — optional metadata map
   """
   defdelegate new(opts), to: PgDurable.Workflow.Builder, as: :new
+
+  @doc """
+  Create a new workflow, returning `{:ok, workflow}` or `{:error, [Diagnostic]}`.
+
+  Returns a diagnostic when `:name` is missing or not a binary string.
+  """
+  defdelegate new!(opts), to: PgDurable.Workflow.Builder, as: :new!
 
   # ── Node constructors ──
 
@@ -85,14 +94,23 @@ defmodule PgDurable do
 
   # ── References ──
 
+  @doc "Create a typed result reference, returning `{:ok, ref}` or `{:error, Diagnostic}`."
+  defdelegate ref(name), to: PgDurable.Ref, as: :result
+
+  @doc "Create a typed column reference, returning `{:ok, ref}` or `{:error, Diagnostic}`."
+  defdelegate ref(name, column), to: PgDurable.Ref, as: :column
+
+  @doc "Create a typed rowset reference, returning `{:ok, ref}` or `{:error, Diagnostic}`."
+  defdelegate rowset(name), to: PgDurable.Ref, as: :rowset
+
   @doc "Create a typed result reference (raises on invalid name)."
-  defdelegate ref(name), to: PgDurable.Ref, as: :result!
+  defdelegate ref!(name), to: PgDurable.Ref, as: :result!
 
   @doc "Create a typed column reference (raises on invalid name)."
-  defdelegate ref(name, column), to: PgDurable.Ref, as: :column!
+  defdelegate ref!(name, column), to: PgDurable.Ref, as: :column!
 
   @doc "Create a typed rowset reference (raises on invalid name)."
-  defdelegate rowset(name), to: PgDurable.Ref, as: :rowset!
+  defdelegate rowset!(name), to: PgDurable.Ref, as: :rowset!
 
   # ── Rendering ──
 
