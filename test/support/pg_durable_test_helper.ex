@@ -9,8 +9,9 @@ defmodule PgDurable.TestSupport do
   @pg17_port 55_417
   @pg18_port 55_418
   @default_port @pg17_port
-  @db_name "pg_durable_test"
-  @db_user "pg_durable_test"
+  # pg_durable always installs into the 'postgres' database
+  @db_name "postgres"
+  @db_user "postgres"
   @db_password "pg_durable_test"
   @max_retries 30
   @retry_interval_ms 1000
@@ -91,7 +92,8 @@ defmodule PgDurable.TestSupport do
     %{rows: [[version_num]]} =
       Postgrex.query!(conn, "SHOW server_version_num", [])
 
-    major = div(version_num, 10_000)
+    version_int = if is_binary(version_num), do: String.to_integer(version_num), else: version_num
+    major = div(version_int, 10_000)
 
     if major < 17 do
       raise """
@@ -129,22 +131,15 @@ defmodule PgDurable.TestSupport do
   end
 
   defp check_worker_ready!(conn) do
+    # The pg_durable worker may not appear in pg_stat_activity with a
+    # predictable backend_type name. Test readiness by calling df.start
+    # directly — if it succeeds, the worker is operational.
     Enum.reduce_while(1..@max_retries, :not_ready, fn _attempt, _acc ->
-      %{rows: [[count]]} =
-        Postgrex.query!(
-          conn,
-          """
-          SELECT count(*) FROM pg_stat_activity
-          WHERE backend_type = 'pg_durable worker'
-          """,
-          []
-        )
-
-      if count > 0 do
-        {:halt, :ready}
-      else
-        Process.sleep(@retry_interval_ms)
-        {:cont, :not_ready}
+      case Postgrex.query(conn, "SELECT df.start('SELECT 1')", []) do
+        {:ok, %{rows: [[_id]]}} -> {:halt, :ready}
+        _ ->
+          Process.sleep(@retry_interval_ms)
+          {:cont, :not_ready}
       end
     end)
     |> case do

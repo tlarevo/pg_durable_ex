@@ -1,21 +1,18 @@
 services:
   pg_durable_pg18:
-    image: postgres:18
+    image: ghcr.io/microsoft/pg_durable:pg18
+    platform: linux/amd64
     container_name: pg_durable_test_pg18
     environment:
-      POSTGRES_DB: pg_durable_test
-      POSTGRES_USER: pg_durable_test
       POSTGRES_PASSWORD: pg_durable_test
-      POSTGRES_HOST_AUTH_METHOD: trust
     ports:
       - "55418:5432"
     command: >
       postgres
         -c shared_preload_libraries='pg_durable'
-        -c pg_durable.database_name='pg_durable_test'
-        -c pg_durable.worker_role='pg_durable_test'
+        -c pg_durable.database_name='postgres'
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pg_durable_test -d pg_durable_test"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
       interval: 2s
       timeout: 5s
       retries: 30
