@@ -1,6 +1,6 @@
 services:
   pg_durable_pg18:
-    image: ghcr.io/microsoft/pg_durable:pg18
+    image: ghcr.io/microsoft/pg_durable:v0.2.7-pg18
     platform: linux/amd64
     container_name: pg_durable_test_pg18
     environment:
