@@ -58,9 +58,10 @@ defmodule PgDurable.Renderer do
   end
 
   def to_expr(%If{condition: cond_sql, then: then_node, else: else_node}) do
-    with {:ok, t} <- to_expr(then_node),
+    with {:ok, cond_quoted} <- Safety.quote_sql_string(cond_sql),
+         {:ok, t} <- to_expr(then_node),
          {:ok, e} <- to_expr(else_node) do
-      {:ok, "df.if(#{cond_sql}, #{t}, #{e})"}
+      {:ok, "df.if(#{cond_quoted}, #{t}, #{e})"}
     end
   end
 

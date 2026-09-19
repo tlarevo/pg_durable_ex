@@ -91,4 +91,25 @@ defmodule PgDurable.Workflow.Builder do
   def raw_expr(expr) when is_binary(expr) do
     %RawExpr{expr: expr}
   end
+
+  @doc """
+  Validate a workflow and render it to SQL in one step.
+
+  Returns `{:ok, sql}` if valid, or `{:error, diagnostics}` with
+  all validation errors found.
+  """
+  @spec validate_and_render(Workflow.t()) ::
+          {:ok, String.t()} | {:error, [PgDurable.Diagnostic.t()]}
+  def validate_and_render(%Workflow{} = workflow) do
+    case PgDurable.Workflow.Validator.validate(workflow) do
+      :ok ->
+        case PgDurable.Renderer.to_start_sql(workflow) do
+          {:ok, sql} -> {:ok, sql}
+          {:error, diags} -> {:error, diags}
+        end
+
+      errors ->
+        {:error, errors}
+    end
+  end
 end

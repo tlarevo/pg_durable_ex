@@ -53,21 +53,95 @@ jobs:
         run: mix test
 
   integration-pg17:
-    name: "Integration (PG 17 — placeholder)"
+    name: "Integration (PG 17)"
     runs-on: ubuntu-latest
     needs: unit
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
-      - name: Placeholder
-        run: echo "THA-174: Integration harness not yet implemented. Skipping."
+
+      - uses: mise-actions/setup@v2
+        with:
+          tools: erlang@27,elixir@1.18
+
+      - name: Cache deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-integration-pg17-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-integration-pg17-
+
+      - name: Install dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Start PostgreSQL 17 with pg_durable
+        run: docker compose -f docker/docker-compose.pg17.yml up -d
+
+      - name: Wait for PostgreSQL 17
+        run: |
+          until docker compose -f docker/docker-compose.pg17.yml exec -T pg_durable_pg17 pg_isready -U postgres -d postgres; do
+            sleep 1
+          done
+
+      - name: Verify pg_durable extension
+        run: docker compose -f docker/docker-compose.pg17.yml exec -T pg_durable_pg17 psql -U postgres -d postgres -c "SELECT extname, extversion FROM pg_extension WHERE extname = 'pg_durable';"
+
+      - name: Run integration tests
+        run: PG_DURABLE_INTEGRATION=1 PG_DURABLE_PG_VERSION=17 mix test --include pg_durable_integration
+
+      - name: Stop PostgreSQL 17
+        if: always()
+        run: docker compose -f docker/docker-compose.pg17.yml down -v
 
   integration-pg18:
-    name: "Integration (PG 18 — placeholder)"
+    name: "Integration (PG 18)"
     runs-on: ubuntu-latest
     needs: unit
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
-      - name: Placeholder
-        run: echo "THA-174: Integration harness not yet implemented. Skipping."
+
+      - uses: mise-actions/setup@v2
+        with:
+          tools: erlang@27,elixir@1.18
+
+      - name: Cache deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-integration-pg18-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-integration-pg18-
+
+      - name: Install dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Start PostgreSQL 18 with pg_durable
+        run: docker compose -f docker/docker-compose.pg18.yml up -d
+
+      - name: Wait for PostgreSQL 18
+        run: |
+          until docker compose -f docker/docker-compose.pg18.yml exec -T pg_durable_pg18 pg_isready -U postgres -d postgres; do
+            sleep 1
+          done
+
+      - name: Verify pg_durable extension
+        run: docker compose -f docker/docker-compose.pg18.yml exec -T pg_durable_pg18 psql -U postgres -d postgres -c "SELECT extname, extversion FROM pg_extension WHERE extname = 'pg_durable';"
+
+      - name: Run integration tests
+        run: PG_DURABLE_INTEGRATION=1 PG_DURABLE_PG_VERSION=18 mix test --include pg_durable_integration
+
+      - name: Stop PostgreSQL 18
+        if: always()
+        run: docker compose -f docker/docker-compose.pg18.yml down -v

@@ -6,14 +6,31 @@ defmodule PgDurable.SQL.Safety do
   these functions. They reject null bytes, escape injection vectors, and enforce
   type-appropriate formatting.
 
+  ## String-literal strategy
+
+  We rely on PostgreSQL's `standard_conforming_strings=on` (the default since
+  PG 9.1). Under this setting backslash sequences (`\\n`, `\\t`, etc.) are
+  treated as *literal data*, not escape codes. Therefore:
+
+  - The only character that needs escaping inside a single-quoted string literal
+    is the single quote itself, doubled to `''`.
+  - Backslashes are passed through unchanged — no double-escaping required.
+  - Dollar signs (`$1`, `$name`) are harmless inside single-quoted literals and
+    are never interpreted as parameter markers or reference tokens by PG.
+
+  This is simpler, faster, and correct under the default PG configuration.
+
   See `docs/security/sql_safety.md` for the trust model.
   """
 
   alias PgDurable.Diagnostic
 
   @doc """
-  Wraps a string in PostgreSQL single quotes, escaping internal single quotes
-  and backslashes. Rejects null bytes and non-binary input.
+  Wraps a string in PostgreSQL single quotes, escaping internal single quotes.
+  Rejects null bytes and non-binary input.
+
+  Under `standard_conforming_strings=on` (PG default since 9.1), backslashes
+  are literal data and need no escaping. Only single quotes are doubled (`''`).
 
   Returns `{:ok, "'escaped_string'"}` or `{:error, Diagnostic.t()}`.
   """
@@ -26,11 +43,7 @@ defmodule PgDurable.SQL.Safety do
     if String.contains?(value, "\0") do
       {:error, Diagnostic.new(:null_byte, "String must not contain null bytes")}
     else
-      escaped =
-        value
-        |> String.replace("\\", "\\\\")
-        |> String.replace("'", "''")
-
+      escaped = String.replace(value, "'", "''")
       {:ok, "'#{escaped}'"}
     end
   end
@@ -98,13 +111,15 @@ defmodule PgDurable.SQL.Safety do
   end
 
   def quote_literal(value) when is_map(value) or is_list(value) do
-    encoded =
-      value
-      |> Jason.encode!()
-      |> quote_sql_string()
-
-    with {:ok, quoted} <- encoded do
+    with {:ok, json} <- Jason.encode(value),
+         {:ok, quoted} <- quote_sql_string(json) do
       {:ok, "#{quoted}::jsonb"}
+    else
+      {:error, %Jason.EncodeError{} = e} ->
+        {:error, Diagnostic.new(:json_encode_error, "JSON encoding failed: #{e.message}")}
+
+      {:error, _} = err ->
+        err
     end
   end
 

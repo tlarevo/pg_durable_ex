@@ -4,6 +4,10 @@ defmodule PgDurable.SQL.SafetyTest do
   alias PgDurable.Diagnostic
   alias PgDurable.SQL.Safety
 
+  # ---------------------------------------------------------------------------
+  # quote_sql_string/1
+  # ---------------------------------------------------------------------------
+
   describe "quote_sql_string/1" do
     test "wraps simple string in single quotes" do
       assert {:ok, "'hello'"} = Safety.quote_sql_string("hello")
@@ -13,8 +17,8 @@ defmodule PgDurable.SQL.SafetyTest do
       assert {:ok, "'it''s'"} = Safety.quote_sql_string("it's")
     end
 
-    test "escapes backslashes" do
-      assert {:ok, "'path\\\\to\\\\file'"} = Safety.quote_sql_string("path\\to\\file")
+    test "backslashes pass through unchanged (standard_conforming_strings)" do
+      assert {:ok, "'path\\to\\file'"} = Safety.quote_sql_string("path\\to\\file")
     end
 
     test "rejects null bytes" do
@@ -41,7 +45,116 @@ defmodule PgDurable.SQL.SafetyTest do
     test "handles unicode and emoji" do
       assert {:ok, "'héllo wörld 🎉'"} = Safety.quote_sql_string("héllo wörld 🎉")
     end
+
+    # --- adversarial: single quotes ---
+
+    test "double single quote" do
+      # "''" → each ' escaped to '' → "''''" → wrapped: "''''''"
+      assert {:ok, "''''''"} = Safety.quote_sql_string("''")
+    end
+
+    test "triple single quote" do
+      # "'''" → each ' escaped to '' → "''''''" → wrapped: "''''''''"
+      assert {:ok, "''''''''"} = Safety.quote_sql_string("'''")
+    end
+
+    # --- adversarial: backslashes ---
+
+    test "double backslash" do
+      assert {:ok, "'\\\\'"} = Safety.quote_sql_string("\\\\")
+    end
+
+    test "escape sequences treated as literal data" do
+      assert {:ok, "'\\n\\t'"} = Safety.quote_sql_string("\\n\\t")
+    end
+
+    # --- adversarial: SQL comments ---
+
+    test "single-line comment" do
+      assert {:ok, "'-- comment'"} = Safety.quote_sql_string("-- comment")
+    end
+
+    test "block comment" do
+      assert {:ok, "'/* comment */'"} = Safety.quote_sql_string("/* comment */")
+    end
+
+    # --- adversarial: semicolons ---
+
+    test "semicolon injection" do
+      assert {:ok, "'''; DROP TABLE'''"} = Safety.quote_sql_string("'; DROP TABLE'")
+    end
+
+    # --- adversarial: dollar signs ---
+
+    test "dollar sign followed by number" do
+      assert {:ok, "'$1'"} = Safety.quote_sql_string("$1")
+    end
+
+    test "dollar sign name reference lookalike" do
+      assert {:ok, "'$name'"} = Safety.quote_sql_string("$name")
+    end
+
+    test "dollar dollar block" do
+      assert {:ok, "'$$dollar$$'"} = Safety.quote_sql_string("$$dollar$$")
+    end
+
+    # --- adversarial: Unicode ---
+
+    test "accented latin" do
+      assert {:ok, "'héllo'"} = Safety.quote_sql_string("héllo")
+    end
+
+    test "CJK characters" do
+      assert {:ok, "'日本語'"} = Safety.quote_sql_string("日本語")
+    end
+
+    test "emoji" do
+      assert {:ok, "'🌍'"} = Safety.quote_sql_string("🌍")
+    end
+
+    # --- adversarial: nested JSON ---
+
+    test "JSON with embedded single quotes" do
+      json = ~s({"key": "value with 'quotes'"})
+      assert {:ok, quoted} = Safety.quote_sql_string(json)
+      assert String.starts_with?(quoted, "'")
+      assert String.ends_with?(quoted, "'")
+      # The inner quotes are doubled
+      assert String.contains?(quoted, "''")
+    end
+
+    # --- adversarial: long strings ---
+
+    test "1000+ char string passes through" do
+      long = String.duplicate("a", 1500)
+      assert {:ok, result} = Safety.quote_sql_string(long)
+      assert result == "'#{long}'"
+    end
+
+    # --- adversarial: null byte rejection ---
+
+    test "null byte rejected at start" do
+      assert {:error, %Diagnostic{code: :null_byte}} = Safety.quote_sql_string("\0foo")
+    end
+
+    test "null byte rejected at end" do
+      assert {:error, %Diagnostic{code: :null_byte}} = Safety.quote_sql_string("foo\0")
+    end
+
+    # --- adversarial: dollar sign strings not interpreted as references ---
+
+    test "string starting with dollar is just data" do
+      assert {:ok, "'$ref'"} = Safety.quote_sql_string("$ref")
+    end
+
+    test "string that looks like parameter marker is just data" do
+      assert {:ok, "'$1 $2 $3'"} = Safety.quote_sql_string("$1 $2 $3")
+    end
   end
+
+  # ---------------------------------------------------------------------------
+  # quote_literal/1
+  # ---------------------------------------------------------------------------
 
   describe "quote_literal/1" do
     test "nil becomes NULL" do
@@ -104,7 +217,17 @@ defmodule PgDurable.SQL.SafetyTest do
     test "rejects unsupported types" do
       assert {:error, %Diagnostic{code: :unsupported_type}} = Safety.quote_literal(self())
     end
+
+    test "map with nested JSON containing quotes" do
+      map = %{"key" => "it's a \"test\""}
+      assert {:ok, result} = Safety.quote_literal(map)
+      assert String.ends_with?(result, "::jsonb")
+    end
   end
+
+  # ---------------------------------------------------------------------------
+  # quote_identifier/1
+  # ---------------------------------------------------------------------------
 
   describe "quote_identifier/1" do
     test "wraps simple name in double quotes" do
@@ -127,6 +250,10 @@ defmodule PgDurable.SQL.SafetyTest do
       assert {:error, %Diagnostic{code: :invalid_type}} = Safety.quote_identifier(123)
     end
   end
+
+  # ---------------------------------------------------------------------------
+  # embed_node_sql/1
+  # ---------------------------------------------------------------------------
 
   describe "embed_node_sql/1" do
     test "quotes developer SQL as string literal" do

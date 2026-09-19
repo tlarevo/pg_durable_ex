@@ -46,8 +46,7 @@ defmodule PgDurable.RendererTest do
         )
 
       assert {:ok, expr} = Renderer.to_expr(node)
-      assert expr =~ "df.if("
-      assert expr =~ "SELECT true"
+      assert expr == "df.if('SELECT true', 'SELECT ''yes''', 'SELECT ''no''')"
     end
 
     test "sleep" do
@@ -73,17 +72,17 @@ defmodule PgDurable.RendererTest do
     end
 
     test "result reference" do
-      ref = Ref.result(:batch)
+      ref = Ref.result!(:batch)
       assert {:ok, "$batch"} = Renderer.to_expr(ref)
     end
 
     test "column reference" do
-      ref = Ref.column(:user, :id)
+      ref = Ref.column!(:user, :id)
       assert {:ok, "$user.id"} = Renderer.to_expr(ref)
     end
 
     test "row-set reference" do
-      ref = Ref.rowset(:batch)
+      ref = Ref.rowset!(:batch)
       assert {:ok, "$batch.*"} = Renderer.to_expr(ref)
     end
 
@@ -152,6 +151,42 @@ defmodule PgDurable.RendererTest do
     test "invalid workflow returns diagnostics" do
       w = Builder.new(name: "")
       assert [_ | _] = Renderer.validate(w)
+    end
+
+    test "unknown node type is rejected" do
+      w = Builder.new(name: "test", root: %{__struct__: FakeNode})
+      assert [_ | _] = diagnostics = Renderer.validate(w)
+      assert Enum.any?(diagnostics, &(&1.code == :unknown_node))
+    end
+
+    test "named result validates inner node recursively" do
+      node = Builder.named(Builder.sql(""), "x")
+      w = Builder.new(name: "test", root: node)
+      assert [_ | _] = Renderer.validate(w)
+    end
+
+    test "if condition must be non-empty" do
+      node = Builder.if_("", Builder.sql("SELECT 1"), Builder.sql("SELECT 2"))
+      w = Builder.new(name: "test", root: node)
+      assert diagnostics = Renderer.validate(w)
+      assert Enum.any?(diagnostics, &(&1.code == :invalid_if_condition))
+    end
+
+    test "if validates children recursively" do
+      node = Builder.if_("SELECT true", Builder.sql(""), Builder.sql("SELECT 2"))
+      w = Builder.new(name: "test", root: node)
+      assert [_ | _] = Renderer.validate(w)
+    end
+
+    test "valid workflow with label" do
+      w = Builder.new(name: "test", label: "my-label", root: Builder.sql("SELECT 1"))
+      assert :ok = Renderer.validate(w)
+    end
+
+    test "invalid label is rejected" do
+      w = Builder.new(name: "test", label: "", root: Builder.sql("SELECT 1"))
+      assert diagnostics = Renderer.validate(w)
+      assert Enum.any?(diagnostics, &(&1.code == :invalid_label))
     end
   end
 end

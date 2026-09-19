@@ -15,6 +15,7 @@ defmodule PgDurable.TestSupport do
   @db_password "pg_durable_test"
   @max_retries 30
   @retry_interval_ms 1000
+  @expected_pg_durable_version "0.2.7"
 
   @doc """
   Check if integration tests are enabled.
@@ -73,61 +74,89 @@ defmodule PgDurable.TestSupport do
   end
 
   @doc """
-  Ensure pg_durable extension is ready. Retries for transient initialization.
+  Ensure pg_durable is ready for integration testing.
 
-  Raises with actionable error if:
-  - Extension is missing
-  - PostgreSQL major version < 17
-  - Background worker not initialized after retries
+  Runs all three verification checks in order:
+  1. PostgreSQL major version matches expected (from PG_DURABLE_PG_VERSION)
+  2. pg_durable extension version matches #{@expected_pg_durable_version}
+  3. Harness identity marker query succeeds
+  4. df.start probe confirms background worker is operational
   """
   def ensure_pg_durable_ready!(conn) do
-    check_postgresql_version!(conn)
-    check_extension_present!(conn)
+    verify_pg_version!(conn, pg_version())
+    verify_pg_durable_version!(conn)
+    harness_identity!(conn)
     check_worker_ready!(conn)
-    print_pg_durable_version(conn)
     :ok
   end
 
-  defp check_postgresql_version!(conn) do
+  @doc """
+  Verify the running PostgreSQL major version matches the expected version.
+
+  Raises if mismatch is detected.
+  """
+  def verify_pg_version!(conn, expected_major) do
     %{rows: [[version_num]]} =
       Postgrex.query!(conn, "SHOW server_version_num", [])
 
     version_int = if is_binary(version_num), do: String.to_integer(version_num), else: version_num
-    major = div(version_int, 10_000)
+    actual_major = div(version_int, 10_000)
 
-    if major < 17 do
+    unless actual_major == expected_major do
       raise """
-      pg_durable integration tests require PostgreSQL 17 or later.
-      Detected PostgreSQL #{major} (server_version_num: #{version_num}).
+      PostgreSQL major version mismatch.
+      Expected: #{expected_major}, got: #{actual_major} (server_version_num: #{version_num}).
 
-      Use a disposable container instance on the correct port:
-        docker compose -f docker/docker-compose.pg17.yml up -d
+      Ensure the correct Docker Compose config is running:
+        docker compose -f docker/docker-compose.pg#{expected_major}.yml up -d
       """
     end
+
+    IO.puts("  PostgreSQL version verified: #{actual_major} (server_version_num: #{version_int})")
   end
 
-  defp check_extension_present!(conn) do
-    %{rows: [[exists]]} =
+  @doc """
+  Verify the pg_durable extension version matches the expected version (#{@expected_pg_durable_version}).
+
+  Raises if extension is missing or version mismatches.
+  """
+  def verify_pg_durable_version!(conn) do
+    %{rows: [[version]]} =
       Postgrex.query!(
         conn,
-        """
-        SELECT EXISTS (
-          SELECT 1 FROM pg_extension WHERE extname = 'pg_durable'
-        )
-        """,
+        "SELECT extversion FROM pg_extension WHERE extname = 'pg_durable'",
         []
       )
 
-    unless exists do
+    unless version == @expected_pg_durable_version do
       raise """
-      pg_durable extension is not installed.
+      pg_durable extension version mismatch.
+      Expected: #{@expected_pg_durable_version}, got: #{version}.
 
-      Run the initialization SQL against the test database:
-        docker exec -i pg_durable_test_pg17 psql -U pg_durable_test -d pg_durable_test < docker/pg_durable_init.sql
-
-      Or start a fresh container which runs init automatically.
+      Ensure the correct pg_durable image tag is in use:
+        ghcr.io/microsoft/pg_durable:v#{@expected_pg_durable_version}-pg#{pg_version()}
       """
     end
+
+    IO.puts("  pg_durable extension version verified: #{version}")
+  end
+
+  @doc """
+  Run a harness identity marker query to confirm the test harness is connected
+  to the expected database and the pg_durable worker is accepting queries.
+  """
+  def harness_identity!(conn) do
+    marker = "pg_durable_ex_harness_v#{@expected_pg_durable_version}"
+
+    %{rows: [[result]]} =
+      Postgrex.query!(conn, "SELECT '#{marker}'", [])
+
+    unless result == marker do
+      raise "Harness identity marker mismatch: expected '#{marker}', got '#{result}'."
+    end
+
+    IO.puts("  Harness identity verified: #{result}")
+    :ok
   end
 
   defp check_worker_ready!(conn) do
@@ -136,7 +165,9 @@ defmodule PgDurable.TestSupport do
     # directly — if it succeeds, the worker is operational.
     Enum.reduce_while(1..@max_retries, :not_ready, fn _attempt, _acc ->
       case Postgrex.query(conn, "SELECT df.start('SELECT 1')", []) do
-        {:ok, %{rows: [[_id]]}} -> {:halt, :ready}
+        {:ok, %{rows: [[_id]]}} ->
+          {:halt, :ready}
+
         _ ->
           Process.sleep(@retry_interval_ms)
           {:cont, :not_ready}
@@ -144,6 +175,7 @@ defmodule PgDurable.TestSupport do
     end)
     |> case do
       :ready ->
+        IO.puts("  pg_durable worker readiness confirmed via df.start probe")
         :ok
 
       :not_ready ->
@@ -155,21 +187,6 @@ defmodule PgDurable.TestSupport do
 
         Then restart PostgreSQL and re-run initialization.
         """
-    end
-  end
-
-  defp print_pg_durable_version(conn) do
-    try do
-      %{rows: [[version]]} =
-        Postgrex.query!(
-          conn,
-          "SELECT extversion FROM pg_extension WHERE extname = 'pg_durable'",
-          []
-        )
-
-      IO.puts("  pg_durable extension version: #{version}")
-    rescue
-      _ -> IO.puts("  pg_durable extension version: unknown")
     end
   end
 end
