@@ -1,0 +1,28 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.14.0/.schema/devbox.schema.json",
+  "env": {
+    "MIX_ENV": "test"
+  },
+  "packages": [
+    "elixir@1.18",
+    "erlang@27",
+    "git",
+    "postgresql@17"
+  ],
+  "shell": {
+    "init_hook": [
+      "mix local.hex --force",
+      "mix local.rebar --force",
+      "mix deps.get"
+    ]
+  },
+  "scripts": {
+    "test": "mix test",
+    "check": "mix format --check-formatted && mix compile --warnings-as-errors && mix test",
+    "format": "mix format",
+    "compile": "mix compile --warnings-as-errors",
+    "test-integration-pg17": "PG_DURABLE_PG_VERSION=17 PG_DURABLE_INTEGRATION=1 mix test --include pg_durable_integration",
+    "test-integration-pg18": "PG_DURABLE_PG_VERSION=18 PG_DURABLE_INTEGRATION=1 mix test --include pg_durable_integration",
+    "test-integration": "PG_DURABLE_INTEGRATION=1 mix test --include pg_durable_integration"
+  }
+}
