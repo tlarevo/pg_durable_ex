@@ -73,8 +73,14 @@ defmodule PgDurable.Workflow.Builder do
 
   @doc """
   Capture a named result: `|=> name`.
+
+  Accepts a string or atom name (atoms are converted to strings).
   """
-  @spec named(PgDurable.Node.t(), String.t()) :: NamedResult.t()
+  @spec named(PgDurable.Node.t(), String.t() | atom()) :: NamedResult.t()
+  def named(node, name) when is_atom(name) do
+    %NamedResult{node: node, name: Atom.to_string(name)}
+  end
+
   def named(node, name) when is_binary(name) do
     %NamedResult{node: node, name: name}
   end
@@ -121,6 +127,28 @@ defmodule PgDurable.Workflow.Builder do
   @spec raw_expr(String.t()) :: RawExpr.t()
   def raw_expr(expr) when is_binary(expr) do
     %RawExpr{expr: expr}
+  end
+
+  @doc """
+  Wrap a root node as a workflow. Terminal pipe operator.
+
+      PgDurable.sql("SELECT 1")
+      |> PgDurable.workflow(name: "my_workflow")
+
+  Options:
+
+    * `:name` (required) — workflow name
+    * `:label` — optional human-readable label
+    * `:metadata` — optional map of metadata
+  """
+  @spec workflow(PgDurable.Node.t(), keyword()) :: Workflow.t()
+  def workflow(root, opts) do
+    %Workflow{
+      name: Keyword.fetch!(opts, :name),
+      label: Keyword.get(opts, :label),
+      root: root,
+      metadata: Keyword.get(opts, :metadata, %{})
+    }
   end
 
   @doc """

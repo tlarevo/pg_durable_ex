@@ -7,34 +7,36 @@ defmodule PgDurable do
 
   ## Quick start
 
-      import PgDurable
-
       workflow =
-        new(name: "send_welcome")
-        |> sql("SELECT * FROM users WHERE id = :user_id")
-        |> named("user")
-        |> then(sql("INSERT INTO emails (user_id, body) VALUES (:user_id, 'Welcome!')"))
-        |> then(sleep(3600))
-        |> then(wait_for_signal("payment_confirmed"))
+        PgDurable.sql("SELECT 42 AS value")
+        |> PgDurable.named(:answer)
+        |> PgDurable.then(
+          PgDurable.sql("SELECT $answer.value * 2 AS doubled")
+        )
+        |> PgDurable.workflow(name: "double_answer")
 
-      {:ok, expression} = to_expr(workflow)
-      {:ok, sql} = to_sql(workflow)
-      :ok = validate(workflow)
+      :ok = PgDurable.validate(workflow)
+      {:ok, sql} = PgDurable.to_sql(workflow)
+
+  ## Workflow construction
+
+  Pipe-first composition — build nodes, compose, then wrap as a workflow:
+
+      PgDurable.sql("SELECT 1 AS a")
+      |> PgDurable.then(PgDurable.sql("SELECT 2 AS b"))
+      |> PgDurable.workflow(name: "sequence")
 
   ## References
 
-      user_ref = ref("user")
-      email_col = ref("email", "address")
-      rows = rowset("orders")
-
-  References can be passed to `to_expr/1` to render their pg_durable token
-  without wrapping them in a workflow node.
+      PgDurable.ref(:user)          # $user
+      PgDurable.ref(:user, :id)     # $user.id
+      PgDurable.rowset(:batch)      # $batch.*
 
   ## Escape hatch
 
-      raw_expr("df.transform(result, {mode: 'compact'})")
+      PgDurable.raw_expr("df.sleep(10)")
 
-  `raw_expr/1` embeds a literal pg_durable expression string. Do not
+  `raw_expr/1` embeds a literal pg_durable expression. Do not
   interpolate user data — use the typed node constructors instead.
   """
 
@@ -91,6 +93,14 @@ defmodule PgDurable do
 
   @doc "Raw pg_durable expression (escape hatch). Do not embed user data."
   defdelegate raw_expr(expr), to: PgDurable.Workflow.Builder, as: :raw_expr
+
+  @doc """
+  Wrap a root node as a workflow.
+
+      PgDurable.sql("SELECT 1")
+      |> PgDurable.workflow(name: "my_workflow")
+  """
+  defdelegate workflow(root, opts), to: PgDurable.Workflow.Builder, as: :workflow
 
   # ── References ──
 
